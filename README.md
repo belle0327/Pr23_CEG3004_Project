@@ -85,7 +85,7 @@ To transform variable-length temporal frames into a fixed-length **645-dimension
 * **Median**: Provides a central tendency robust to transient noise or outliers.
 * **25th & 75th Percentiles**: Describe the dynamic range and the spread of the feature distribution.
 
-This statistical aggregation ensures that the model receives a consistent input size regardless of the original audio clip duration.
+
 ---
 
 ### 4. Model
