@@ -3,12 +3,13 @@
 # CEG3004 DSP Mini-Project: Environmental Sound Classification
 
 ## Project Overview
-This project implements a robust environmental sound classification pipeline using DSP feature engineering and machine learning.
-
-The goal is to classify audio clips into 50 environmental sound classes and maintain performance under:
-- clean audio
-- noisy audio
-- band-limited audio
+This project implements a robust audio classification pipeline for **Environmental Sound Classification (ESC-50)**. The goal is to classify audio clips into **50 environmental sound classes** while maintaining strong performance under three distinct conditions:
+ 
+- **Clean** — original, unmodified audio
+- **Noisy** — additive noise applied to the signal
+- **Band-limited** — frequency content restricted to a narrower range
+ 
+The final performance score is weighted: **50% Clean + 25% Noisy + 25% Band-limited**.
 
 ---
 
