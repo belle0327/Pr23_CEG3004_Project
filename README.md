@@ -61,20 +61,20 @@ Applied to every audio clip before feature extraction:
 5. **Peak normalisation** — divides by peak amplitude so all clips are on the same scale
 
 ### 2. Feature Extraction
-All features are computed at `n_fft=1024`, `hop_length=256` on 16 kHz mono audio.
+All features are extracted from 16 kHz mono audio using `n_fft=1024` and `hop_length=256`. 
 
-| Feature Group | Feature | Base Dim | Stat Multiplier | Final Dimension | Normalization |
-| :--- | :--- | :---: | :---: | :---: | :--- |
-| **Cepstral** | MFCC | 20 | $\times 5$ (Mean, Std, Med, P25, P75) | 100 | $L_p$ Row-Normalized |
-| **Cepstral** | Delta MFCC | 20 | $\times 5$ (Mean, Std, Med, P25, P75) | 100 | N/A |
-| **Cepstral** | Delta-Delta MFCC | 20 | $\times 5$ (Mean, Std, Med, P25, P75) | 100 | N/A |
-| **Spectral** | Log-Mel Spectrogram | 64 | $\times 5$ (Mean, Std, Med, P25, P75) | 320 | $L_p$ Row-Normalized |
-| **Spectral** | Spectral Centroid | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
-| **Spectral** | Spectral Bandwidth | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
-| **Spectral** | Spectral Rolloff | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
-| **Temporal** | Zero Crossing Rate | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
-| **Temporal** | RMS Energy | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
-| **Total** | **Full Feature Vector** | | | **645** | |
+| Feature Group | Feature Component | Base Dim ($N$) | Stat Multiplier | Final Dim |
+| :--- | :--- | :---: | :---: | :---: |
+| **Cepstral** | MFCC (Row-Normalized) | 20 | $\times 5$ | 100 |
+| | Delta MFCC (d1) | 20 | $\times 5$ | 100 |
+| | Delta-Delta MFCC (d2) | 20 | $\times 5$ | 100 |
+| **Spectral** | Log-Mel Spectrogram (Row-Normalized) | 64 | $\times 5$ | 320 |
+| | Spectral Centroid | 1 | $\times 5$ | 5 |
+| | Spectral Bandwidth | 1 | $\times 5$ | 5 |
+| | Spectral Rolloff | 1 | $\times 5$ | 5 |
+| **Temporal** | Zero Crossing Rate | 1 | $\times 5$ | 5 |
+| | RMS Energy | 1 | $\times 5$ | 5 |
+| **Total** | **Full Feature Vector** | **129** | — | **645** |
 
 ---
 
