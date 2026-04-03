@@ -89,12 +89,12 @@ This statistical aggregation ensures that the model receives a consistent input 
 ---
 
 ### 4. Model
-
+The final model is a **Support Vector Machine (SVM)**, implemented via the `SVC` (Support Vector Classifier) class.
+```
 Pipeline:
-- StandardScaler
-- SVM (RBF Kernel)
-
-Final model: SVC(C=10, kernel='rbf', gamma='scale', class_weight='balanced')
+  └─ StandardScaler()
+  └─ SVC(C=10, kernel='rbf', gamma='scale', class_weight='balanced')
+```
 
 
 ---
