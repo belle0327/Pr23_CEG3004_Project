@@ -1,4 +1,4 @@
-# Experiment Log — Pr_23 CEG3004 DSP Mini-Project
+# Experiment Log — Pr_23 CEG3004 DSP Project
 
 This document records all experiments conducted across the three modifiable sections of the pipeline: **Preprocessing**, **Feature Extraction**, and **Model Training**. Each section begins with a summary table, followed by the full code variants tested, and ends with error analysis and visualisation notes.
 
@@ -22,6 +22,8 @@ This document records all experiments conducted across the three modifiable sect
 
 The preprocessing function `preprocess_audio(y, sr)` is applied to every clip before feature extraction. We tested different combinations of normalisation, silence trimming, and filtering.
 
+> **Note:** All preprocessing experiments use the **baseline feature extraction** (MFCC-only, mean+std pooling) and **baseline model** (Logistic Regression) to isolate the effect of preprocessing changes.
+> 
 ### Summary Table
 
 | Experiment | Silence Trim `top_db` | Pre-emphasis | Normalisation | Val Accuracy | Macro-F1 | Notes |
