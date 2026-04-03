@@ -46,7 +46,7 @@ The preprocessing function `preprocess_audio(y, sr)` is applied to every clip be
 
 ```python
 def preprocess_audio(y, sr):
-    y = np.nan_to_num(y).astype(np.float32)
+
     return y
 ```
 
