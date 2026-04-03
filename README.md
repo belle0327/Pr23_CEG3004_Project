@@ -89,31 +89,68 @@ To transform variable-length temporal frames into a fixed-length **645-dimension
 ---
 
 ### 4. Model
-The final model is a **Support Vector Machine (SVM)**, implemented via the `SVC` (Support Vector Classifier) class.
+
+The final model is a **soft‑voting ensemble** that combines three different classifiers:
+
 ```
 Pipeline:
   └─ StandardScaler()
-  └─ SVC(C=10, kernel='rbf', gamma='scale', class_weight='balanced')
+  └─ VotingClassifier (Voting='Soft')
+      ├─ Logistic Regression (C=1, balanced)
+      ├─ SVM (RBF Kernel, C=10, balanced)
+      └─ Random Forest (n=200)
 ```
-- **StandardScaler** — normalises all features to zero mean and unit variance before the SVM
-- **SVC with RBF kernel** — captures non-linear decision boundaries in the high-dimensional feature space
-- **`class_weight='balanced'`** — automatically adjusts class weights inversely proportional to class frequency. This was a deliberate design choice to handle any class imbalance in the training set (a form of experimental discipline), preventing the model from biasing predictions toward more common classes.
+---
+
+
+**Why soft voting?**  
+Each classifier outputs class probabilities; the ensemble averages them and picks the class with the highest mean probability. This reduces individual model variance and captures complementary decision boundaries.
 
 ---
 
 ## Experiments
 
-Tested:
-- SVM (C = 10, 20, 30)
-- Random Forest
-- Feature selection (SelectKBest)
-- Augmentation (NOT used in final)
+All experiments used an 80/20 stratified train‑validation split (`random_state=42`) and the **final feature extraction pipeline** (F5: 645‑dim features with 5‑statistic pooling).
+
+| Model | Validation Accuracy | Macro‑F1 |
+|-------|---------------------|-----------|
+| Logistic Regression (baseline) | 0.60 | ~0.59 |
+| Random Forest (n=200) | 0.60 | ~0.58 |
+| SVM (RBF, C=1) | 0.50 | ~0.46 |
+| SVM (RBF, C=10, balanced) | 0.59 | ~0.57 |
+| SVM (RBF, C=20) | 0.59 | ~0.57 |
+| SVM (RBF, C=30) | 0.59 | ~0.57 |
+| Gradient Boosting (n=200) | (too slow, no result) | — |
+| **Voting Ensemble (soft)** | **0.62** | **~0.63** |
 
 ### Final Decision
-- C=10 chosen (same performance, simpler)
-- Random Forest worse
-- Feature selection no improvement
-- Augmentation reduced performance → removed
+
+The **Voting Ensemble** was selected as the final model because it achieved the highest validation accuracy (0.62) and Macro‑F1 (~0.63) across all tested configurations.  
+- Single SVMs plateaued at 0.59 accuracy regardless of C.  
+- Random Forest and Logistic Regression each scored 0.60 but made different error patterns.  
+- Soft voting averages their probability outputs, yielding a robust improvement.
+
+> **Note:** Data augmentation was experimented with but **removed** from the final pipeline – adding augmented copies to the already small training set (40 clips/class) caused overfitting and did not improve validation performance.
+
+---
+
+## Results
+
+> These results are produced by running `notebooks/group23_ceg3004_project_colab.py` **as submitted** – the final version of the code with all TODO sections completed.
+
+| Metric | Score |
+| :--- | :--- |
+| **Validation Accuracy** | **0.62** |
+| **Macro‑F1 Score** | **~0.63** |
+
+Evaluated on a stratified 80/20 train‑validation split (`random_state=42`). This reflects the best configuration identified through the experiments in [`experiment.md`](./experiment.md) – earlier configurations scored as low as ~0.44 accuracy with no preprocessing and the baseline Logistic Regression model.
+
+---
+
+## Output Files
+
+- `Pr_23_model.joblib`  (the trained Voting Ensemble pipeline)
+- `Pr_23_predictions.csv`
 
 ---
 
@@ -123,8 +160,8 @@ Tested:
  
 | Metric | Score |
 | :--- | :--- |
-| **Validation Accuracy** | ~0.60 (0.592) |
-| **Macro-F1 Score** | ~0.57 (0.572) |
+| **Validation Accuracy** | ~0.63  |
+| **Macro-F1 Score** | ~0.62  |
  
 Evaluated on a stratified 80/20 train-validation split (`random_state=42`). This reflects the best configuration identified through the experiments in [`experiment.md`](./experiment.md) — earlier configurations scored as low as ~0.44 accuracy with no preprocessing and the baseline Logistic Regression model.
 
