@@ -63,20 +63,18 @@ Applied to every audio clip before feature extraction:
 ### 2. Feature Extraction
 Features used:
 
-**Cepstral Features**
-- MFCC (20)
-- Delta
-- Delta-Delta
-
-**Spectral Features**
-- Log-Mel Spectrogram (64)
-- Spectral centroid
-- Bandwidth
-- Rolloff
-
-**Temporal Features**
-- Zero Crossing Rate
-- RMS Energy
+| Feature Group | Feature | Base Dim | Stat Multiplier | Final Dimension | Normalization |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Cepstral** | MFCC | 20 | $\times 5$ (Mean, Std, Med, P25, P75) | 100 | $L_p$ Row-Normalized |
+| **Cepstral** | Delta MFCC | 20 | $\times 5$ (Mean, Std, Med, P25, P75) | 100 | N/A |
+| **Cepstral** | Delta-Delta MFCC | 20 | $\times 5$ (Mean, Std, Med, P25, P75) | 100 | N/A |
+| **Spectral** | Log-Mel Spectrogram | 64 | $\times 5$ (Mean, Std, Med, P25, P75) | 320 | $L_p$ Row-Normalized |
+| **Spectral** | Spectral Centroid | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
+| **Spectral** | Spectral Bandwidth | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
+| **Spectral** | Spectral Rolloff | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
+| **Temporal** | Zero Crossing Rate | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
+| **Temporal** | RMS Energy | 1 | $\times 5$ (Mean, Std, Med, P25, P75) | 5 | N/A |
+| **Total** | **Full Feature Vector** | | | **645** | |
 
 ---
 
