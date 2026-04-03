@@ -512,21 +512,23 @@ model = Pipeline([
 
 ---
 
+
 ## Error Analysis
 
-### Which Classes Are Hardest?
+####  Classes with Zero or Very Low F1 Score
 
-Based on the confusion matrix from the final model (Voting Ensemble, F5 features), the most common misclassifications cluster around acoustically similar sound pairs:
+The per‑class F1 analysis reveals that some classes are **almost never correctly predicted**:
 
-**High confusion pairs:**
-- `dog_bark` ↔ `rooster` — both are rhythmic animal vocalisations with similar short-burst temporal structure and overlapping MFCC coefficient distributions, especially under additive noise
-- `clock_tick` ↔ `mouse_click` — both are rapid, high-frequency transient sounds; the band-limited condition removes the distinguishing high-frequency click detail, causing the model to conflate them
-- `engine` ↔ `train` — both are sustained low-frequency rumbles with similar spectral centroid and bandwidth; RMS and ZCR profiles are also close, making MFCC-based discrimination harder
-- `rain` ↔ `crackling_fire` — both are broadband "noise-like" textures with similar ZCR and RMS energy profiles; neither has a strong tonal component to separate them
+- **No F1 score (undefined / zero):** `airplane`, `clock_tick`, `wind`  
+  *Reason:* These classes may have been completely absent from the validation split due to the stratified 80/20 random split (with only 40 clips per class, it is possible that all validation samples of a rare class were misclassified as other classes, giving zero true positives). Alternatively, the model may have failed to predict them at all.
 
-**Impact of distortion conditions:**
-- **Noisy condition:** Classes with quiet, sustained sounds (e.g., `crickets`, `clock_tick`) suffer the most. The additive noise raises the noise floor and buries the characteristic low-energy signal components. CMVN partially compensates by normalising per-coefficient statistics, but cannot recover energy lost below the noise floor.
-- **Band-limited condition:** Classes whose discriminating features lie in the high frequency range (e.g., `glass_breaking`, `mouse_click`, `sneezing`) are most affected, as the upper mel bins carry no energy. Pre-emphasis and CMVN provide limited mitigation — they can boost and normalise the remaining low-frequency content, but cannot recover absent frequency bands.
+- **Lowest F1 scores (from lowest to higher):** `laughing` < `coughing` < `door_wood_creaks`  
+  *Reason:* These are all **human‑produced or friction‑based sounds** that share broadband, non‑stationary spectral characteristics. `laughing` and `coughing` have overlapping temporal envelopes and MFCC patterns; `door_wood_creaks` is a slow, low‑frequency frictional sound that can be confused with other mechanical noises (e.g., `door_wood_knock` – note the semantic similarity).
+
+### Impact of Distortion Conditions
+
+- **Noisy condition:** Quiet sounds (`crickets`, `clock_tick`, `wind`) suffer most – additive noise raises the noise floor and buries low‑energy discriminative details. CMVN only partially mitigates this.
+- **Band‑limited condition:** High‑frequency transient sounds (`glass_breaking`, `mouse_click`, `handsaw`) lose their distinguishing high‑end content. Pre‑emphasis and CMVN cannot recover absent frequencies.
 
 ### Why does accuracy plateau around 60–62%?
 
