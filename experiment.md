@@ -391,7 +391,7 @@ mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=n_fft, hop_length=hop)
 | M5 — SVM C=20 | `SVC` | `C=20, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen (less generalisation) |
 | M6 — SVM C=30 | `SVC` | `C=30, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen |
 | M7 — Gradient Boosting | `GradientBoostingClassifier` | `n_estimators=200` | >15min, no result | >15min, no result | Slow to train, no result |
-| **M8 — Voting Ensemble (LR + SVM + RF) (Final)** | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | **0.62** | **~0.63** | **Ensemble combines three diverse models; soft voting uses predicted probabilities. Best overall result.** |
+| **M8 — Voting Ensemble (LR + SVM + RF) (Final)** | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | **0.63** | **~0.62** | **Ensemble combines three diverse models; soft voting uses predicted probabilities. Best overall result.** |
 
 **Final decision: Voting Ensemble (M8)** — soft voting over Logistic Regression, SVM (C=10), and Random Forest produced the highest validation accuracy (0.62) and Macro-F1 (0.63), outperforming any single classifier. Each constituent model makes different types of errors; the ensemble averages their probability outputs to reduce individual model variance. This is the model saved as `Pr_23_model.joblib` and used for all submission predictions.
 
