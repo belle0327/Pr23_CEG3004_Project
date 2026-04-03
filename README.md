@@ -61,7 +61,7 @@ Applied to every audio clip before feature extraction:
 5. **Peak normalisation** — divides by peak amplitude so all clips are on the same scale
 
 ### 2. Feature Extraction
-Features used:
+All features are computed at `n_fft=1024`, `hop_length=256` on 16 kHz mono audio.
 
 | Feature Group | Feature | Base Dim | Stat Multiplier | Final Dimension | Normalization |
 | :--- | :--- | :---: | :---: | :---: | :--- |
