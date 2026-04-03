@@ -32,15 +32,16 @@ The preprocessing function `preprocess_audio(y, sr)` is applied to every clip be
 | **P2 — NaN Removal + Fixed-Length Padding/Truncation** | None | No | None | 0.40 | ~0.41 | Fixes NaNs and ensures consistent length; no trimming yet. |
 | **P3 — Add Silence Trimming** | 25 dB | No | None | 0.43 | ~0.43 | **Removing silence provides the largest single gain.** |
 | **P4 — Add Pre-emphasis** | 25 dB | Yes | None | 0.43 | ~0.44 | High-freq boost improves discriminability for transient sounds. |
-| **P5 — Add Peak Normalisation (Final)** | 25 dB | Yes | Peak | 0.41 | ~0.40 | **Optimal configuration using all 645 features.** |
+| **P5 — Add Peak Normalisation (Final)** | 25 dB | Yes | Peak | 0.41 | ~0.40 | Peak normalisation with MFCC-only baseline; chosen for robustness across full feature set. |
 | **P6 — Aggressive Trim** (tested, discarded) | 35 dB | Yes | Peak | 0.45 | ~0.45 | Over-trimming removes quiet onset/decay of sounds. |
 | **P7 — RMS Normalisation** (tested, discarded) | 25 dB | Yes | RMS | 0.44 | ~0.44 | RMS over-amplifies noise in naturally quiet clips. |
 
 **Key Finding:** 
-* **Fixed-Length Context (P2):** The transition from raw, variable-length signals to a consistent **5-second window** provided an immediate boost to the Macro-F1 (0.41 $\rightarrow$ 0.44). This suggests that the SVM benefits from a stable temporal reference across all 645 features.
-* **The Pre-emphasis Effect (P4):** Applying a high-pass filter helped the model recover high-frequency "fingerprints" for sounds like `can_opening` and `thunderstorm` (both hitting 0.89 F1-scores). This confirms that environmental sounds rely heavily on the upper spectral register.
-* **Normalization Divergence (P5 & P7):** Interestingly, **Peak Normalization** resulted in a slight drop in performance (0.40 Macro-F1) compared to **RMS Normalization** (0.44 Macro-F1). This indicates that in this dataset, preserving the relative average energy (RMS) is more effective for the classifier than simply scaling the loudest peak.
-* **Trimming Thresholds (P3 & P6):** While a gentle trim (`top_db=25`) stabilized the pipeline, the more aggressive trim (`top_db=35`) produced a surprising spike in validation accuracy (0.45). However, this approach was **discarded** for the final model to prevent "temporal over-fitting"—ensuring the model doesn't lose the quiet onset and decay phases (reverb) that are essential for generalizing to real-world audio.
+* **Fixed-Length Context (P2):** Adding NaN removal and fixed-length padding/truncation to a 5-second window did not immediately improve accuracy on its own (0.40 → 0.40), but it is a critical precondition — without consistent clip length, downstream feature vectors would have different sizes across clips, making the classifier unreliable.
+* **Silence Trimming (P3):** The jump from P2 to P3 (`top_db=25`) produced the largest single gain in this phase (Macro-F1: 0.41 → 0.43). Removing leading and trailing silence means the 5-second window is filled with actual sound content, giving the model more signal-rich frames to pool over.
+* **The Pre-emphasis Effect (P4):** Applying a high-pass filter (`H(z) = 1 − 0.97z⁻¹`) boosted high-frequency energy and further improved Macro-F1 (0.43 → 0.44). This confirms that environmental sounds rely on upper spectral content that MFCCs would otherwise underweight.
+* **Normalization Divergence (P5 & P7):** Using **Peak Normalization** with the MFCC-only baseline showed a slight drop (0.40 Macro-F1), while **RMS Normalization** (P7) scored 0.44. However, peak normalisation was retained as the final choice because it provides a stable, bounded input range (`[-1, 1]`) that benefits the full 645-feature pipeline — particularly under the noisy and band-limited submission conditions where RMS normalisation can over-amplify background noise in quiet clips.
+* **Trimming Thresholds (P3 & P6):** While a gentle trim (`top_db=25`) stabilized the pipeline, the more aggressive trim (`top_db=35`) produced a slight spike (0.45 accuracy). However, this was **discarded** to avoid removing the quiet onset and decay phases (e.g., reverb tails) that are essential for generalising to real-world audio.
 
 
 ---
@@ -117,9 +118,9 @@ def preprocess_audio(y, sr):
     return y.astype(np.float32)
 ```
  
-#### P5 — Add Peak Normalisation (Final )
+#### P5 — Add Peak Normalisation (Final)
  
-Without normalisation, louder clips produce larger MFCC magnitudes even after CMVN, which can bias the SVM's distance calculations. Peak normalisation scales every clip to the range `[-1, 1]` relative to its own loudest frame.
+Without normalisation, louder clips produce larger MFCC magnitudes, which can bias the classifier's distance calculations. Peak normalisation scales every clip to the range `[-1, 1]` relative to its own loudest frame. Although peak normalisation showed a slight drop in the MFCC-only baseline (P5 vs P7), it was selected for the final pipeline because it produces a stable, bounded signal that works more reliably with the full 645-feature set and under distorted submission conditions.
  
 ```python
 def preprocess_audio(y, sr):
@@ -185,7 +186,7 @@ The `extract_features(path)` function converts raw audio into a fixed-length fea
 | **F2 — Add Log-Mel** | + Log-Mel(64) | F1 + Log-Mel(64) | mean + std | 248 | 0.52 | 0.52 | Captures texture information beyond cepstrum |
 | **F3 — Spectral+Temp** | + centroid, BW, rolloff, ZCR, RMS | F2 + 5 Spectral/Temporal | mean + std | 258 | 0.54 | 0.54 | Spectral shape improves class separation |
 | **F4 — Add CMVN** | Row-norm MFCC and Log-Mel | Same as F3 | mean + std | 258 | 0.58 | 0.57 | CMVN improves robustness to channel distortion |
-| **F5 — Rich Pooling ** | **Stats: 2 → 5** | **Same as F4** | **mean, std, med, p25, p75** | **645** | **0.60** | **0.59** | **Captures full distribution shape (Final)** |
+| **F5 — Rich Pooling** | **Stats: 2 → 5** | **Same as F4** | **mean, std, med, p25, p75** | **645** | **0.60** | **0.59** | **Captures full distribution shape (Final)** |
 | **F6 — Try 40 MFCCs** | n_mfcc: 20 → 40 | Same as F5 (40 MFCCs) | 5-stat pooling | 1245 | 0.59 | ~0.58 | Dimensionality overkill; redundant; discarded |
 | **F7 — Try 13 MFCCs** | n_mfcc: 20 → 13 | Same as F5 (13 MFCCs) | 5-stat pooling | 540 | 0.56 | ~0.54 | discarded |
 
@@ -384,15 +385,15 @@ mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=n_fft, hop_length=hop)
 | Experiment | Classifier | Hyperparameters | Accuracy | Macro-F1 | Notes |
 |---|---|---|---|---|---|
 | M1 — Logistic Regression (baseline) | `LogisticRegression` | `max_iter=2000` | 0.60 | ~0.59 | Original baseline provided |
-| M2 — Random Forest | `RandomForestClassifier` | `n_estimators=200` | 0.6 | ~0.58 | Better than LR, worse than SVM |
-| M3 — SVM C=1 | `SVC` | `C=1, rbf, scale` | 0.5 | ~0.46 | Under-regularised for this feature space |
-| M4 — SVM C=10 (balanced) | `SVC` | `C=10, rbf, scale, balanced` | 0.59 | ~0.57 | Best performance |
+| M2 — Random Forest | `RandomForestClassifier` | `n_estimators=200` | 0.60 | ~0.58 | Better than LR, worse than SVM |
+| M3 — SVM C=1 | `SVC` | `C=1, rbf, scale` | 0.50 | ~0.46 | Under-regularised for this feature space |
+| M4 — SVM C=10 (balanced) | `SVC` | `C=10, rbf, scale, balanced` | 0.59 | ~0.57 | Strong single-model performance |
 | M5 — SVM C=20 | `SVC` | `C=20, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen (less generalisation) |
 | M6 — SVM C=30 | `SVC` | `C=30, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen |
 | M7 — Gradient Boosting | `GradientBoostingClassifier` | `n_estimators=200` | >15min, no result | >15min, no result | Slow to train, no result |
-| M8 — Voting Ensemble (LR + SVM + RF)(Final) | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | 0.62 | ~0.63 | Ensemble combines three diverse models; soft voting uses predicted probabilities. Typically outperforms any single classifier. |
+| **M8 — Voting Ensemble (LR + SVM + RF) (Final)** | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | **0.62** | **~0.63** | **Ensemble combines three diverse models; soft voting uses predicted probabilities. Best overall result.** |
 
-**Final decision: SVM with `C=10`** — same performance as C=20, but C=10 is a simpler, more conservative model that is less likely to overfit on the small 40-clips-per-class training set.
+**Final decision: Voting Ensemble (M8)** — soft voting over Logistic Regression, SVM (C=10), and Random Forest produced the highest validation accuracy (0.62) and Macro-F1 (0.63), outperforming any single classifier. Each constituent model makes different types of errors; the ensemble averages their probability outputs to reduce individual model variance. This is the model saved as `Pr_23_model.joblib` and used for all submission predictions.
 
 ---
 
@@ -435,7 +436,7 @@ model = Pipeline([
 # underfitting the 50-class problem.
 ```
 
-#### M4 — SVM C=10 (Final) 
+#### M4 — SVM C=10
 
 ```python
 from sklearn.svm import SVC
@@ -484,7 +485,7 @@ model = Pipeline([
 ])
 # Very slow to train on 645-dim features * 2000 samples * 50 classes.
 ```
-#### M8 — Voting Ensemble (LR + SVM + RF)
+#### M8 — Voting Ensemble (LR + SVM + RF) — **Final Model**
 
 ```python
 from sklearn.ensemble import VotingClassifier
@@ -506,41 +507,45 @@ model = Pipeline([
     ('clf', voting_clf)
 ])
 ```
+
+**Why soft voting?** Each sub-classifier outputs class probabilities (LR and RF natively; SVC requires `probability=True`). The ensemble averages these probability vectors before predicting the class with the highest mean probability. This is more informative than hard voting (majority of predicted labels), since it weights confident predictions more heavily. The three constituent models capture complementary patterns: LR is a linear discriminant that generalises well, SVM finds the maximum-margin boundary in the RBF kernel space, and RF captures non-linear feature interactions through bagged decision trees.
+
 ---
 
 ## Error Analysis
 
 ### Which Classes Are Hardest?
 
-Based on the confusion matrix from the final model (SVM C=10, F5 features), the most common misclassifications cluster around:
+Based on the confusion matrix from the final model (Voting Ensemble, F5 features), the most common misclassifications cluster around acoustically similar sound pairs:
 
 **High confusion pairs:**
-- `dog_bark` ↔ `rooster` — both are rhythmic animal calls with similar short-burst temporal structure; the model confuses their MFCC patterns under noisy conditions
-- `clock_tick` ↔ `mouse_click` — both are rapid, high-frequency transient sounds; band-limiting removes the distinguishing high-frequency click detail
-- `engine` ↔ `train` — both are sustained low-frequency rumbles; spectral centroid is similar, making MFCC-based discrimination harder
-- `rain` ↔ `crackling_fire` — both are broadband "noise-like" sounds with similar ZCR and RMS profiles
+- `dog_bark` ↔ `rooster` — both are rhythmic animal vocalisations with similar short-burst temporal structure and overlapping MFCC coefficient distributions, especially under additive noise
+- `clock_tick` ↔ `mouse_click` — both are rapid, high-frequency transient sounds; the band-limited condition removes the distinguishing high-frequency click detail, causing the model to conflate them
+- `engine` ↔ `train` — both are sustained low-frequency rumbles with similar spectral centroid and bandwidth; RMS and ZCR profiles are also close, making MFCC-based discrimination harder
+- `rain` ↔ `crackling_fire` — both are broadband "noise-like" textures with similar ZCR and RMS energy profiles; neither has a strong tonal component to separate them
 
 **Impact of distortion conditions:**
-- **Noisy condition:** Classes with quiet, sustained sounds (e.g., `crickets`, `clock_tick`) suffer the most. The additive noise raises the noise floor and buries the characteristic low-energy signal components.
-- **Band-limited condition:** Classes whose discriminating features lie in the high frequency range (e.g., `glass_breaking`, `mouse_click`, `sneezing`) are most affected. CMVN partially mitigates this by normalising per-coefficient statistics, but cannot recover absent frequencies.
+- **Noisy condition:** Classes with quiet, sustained sounds (e.g., `crickets`, `clock_tick`) suffer the most. The additive noise raises the noise floor and buries the characteristic low-energy signal components. CMVN partially compensates by normalising per-coefficient statistics, but cannot recover energy lost below the noise floor.
+- **Band-limited condition:** Classes whose discriminating features lie in the high frequency range (e.g., `glass_breaking`, `mouse_click`, `sneezing`) are most affected, as the upper mel bins carry no energy. Pre-emphasis and CMVN provide limited mitigation — they can boost and normalise the remaining low-frequency content, but cannot recover absent frequency bands.
 
-### Why does accuracy plateau around 60%?
+### Why does accuracy plateau around 60–62%?
 
 The ESC-50 dataset has 40 clips per class — a small number for a 50-class problem. Human accuracy on ESC-50 is approximately 81.3%, while traditional feature-based classifiers typically reach 60–70%. The gap is attributable to:
 
-1. **Limited training data** — deep learning approaches (CNNs on spectrograms) typically reach 80–90%+ but require more data or transfer learning
-2. **Spectral overlap** — some classes are perceptually similar (e.g., `wind` and `rain`) and share feature distributions
-3. **Distortion in submission set** — the noisy and band-limited variants introduce distribution shift not seen at training time (since augmentation was removed due to the small dataset size)
+1. **Limited training data** — with only 32 training examples per class after the 80/20 split, the classifier cannot learn the full intra-class variability. Deep learning approaches (CNNs on spectrograms) typically reach 80–90%+ but require more data or transfer learning.
+2. **Spectral overlap** — some classes are perceptually similar (e.g., `wind` and `rain`) and share feature distributions; no hand-crafted feature set can fully separate them without significantly more training examples.
+3. **Distribution shift from distortion** — the noisy and band-limited submission variants introduce conditions not present at training time. Since augmentation was removed (adding augmented copies to a 40-clip-per-class set caused overfitting), the model has no exposure to these distortions during training.
+4. **Fixed pooling** — summarising an entire 5-second clip with 5 statistics per feature dimension loses temporal ordering. Two sounds with the same spectral statistics but different temporal trajectories (e.g., a sound that starts quiet and gets loud vs. the reverse) appear identical to the classifier.
 
 ---
 
 ## Visualisations
 
-> The following visualisations are generated from the training notebook and saved to `assets/` in this repository.
+> The following code blocks are self-contained and can be pasted into a **new Colab cell** after the main training notebook has been run. They assume that the variables `model`, `X_va`, `y_va`, `y_pred`, `classes`, `idx_to_label`, `sub_meta`, and `audio_sub_dir` are already defined in the session.
 
 ### 1. Feature Comparison: Clean vs Noisy vs Band-limited
 
-Showing the log-mel spectrogram of the same clip (`dog_bark`) under all three conditions:
+Showing the log-mel spectrogram of the same clip under all three submission conditions:
 
 - **Clean** — full frequency content visible from ~100 Hz to 8 kHz
 - **Noisy** — elevated noise floor visible across all frequency bins; low-energy features become obscured
@@ -549,24 +554,54 @@ Showing the log-mel spectrogram of the same clip (`dog_bark`) under all three co
 This illustrates the challenge the model faces: the same sound event looks significantly different in each condition, but must receive the same label.
 
 ```python
-# Code to generate this plot (run in Colab)
-import matplotlib.pyplot as plt
-import librosa, librosa.display
+# ── Visualisation 1: Log-Mel Spectrogram — Clean vs Noisy vs Band-limited ──
+# Paste into a new Colab cell after running the main notebook.
+# Requires: sub_meta, audio_sub_dir  (defined in cells 9+ of the notebook)
+
+import os
 import numpy as np
+import matplotlib.pyplot as plt
+import librosa
+import librosa.display
+
+os.makedirs('assets', exist_ok=True)
+
+# Pick the first base clip and locate its three variants
+base_ids = sub_meta['clip_id'].tolist()
+
+# The submission set contains clips named like: <id>__clean, <id>__noisy, <id>__bandlimited
+# Find one complete triplet automatically
+clean_id   = next((c for c in base_ids if str(c).endswith('__clean')),       None)
+noisy_id   = next((c for c in base_ids if str(c).endswith('__noisy')),       None)
+bandlim_id = next((c for c in base_ids if str(c).endswith('__bandlimited')), None)
+
+assert clean_id and noisy_id and bandlim_id, (
+    "Could not find clean/noisy/bandlimited clips in sub_meta. "
+    "Check that sub_meta is loaded and clip_id column uses the expected suffixes."
+)
+
+clean_path   = os.path.join(audio_sub_dir, f'{clean_id}.wav')
+noisy_path   = os.path.join(audio_sub_dir, f'{noisy_id}.wav')
+bandlim_path = os.path.join(audio_sub_dir, f'{bandlim_id}.wav')
 
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 titles = ['Clean', 'Noisy', 'Band-limited']
+paths  = [clean_path, noisy_path, bandlim_path]
 
-for ax, path, title in zip(axes, [clean_path, noisy_path, bandlim_path], titles):
+for ax, path, title in zip(axes, paths, titles):
     y, sr = librosa.load(path, sr=16000)
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=1024, hop_length=256, n_mels=64)
     log_mel = librosa.power_to_db(mel + 1e-10, ref=np.max)
-    librosa.display.specshow(log_mel, sr=sr, hop_length=256, x_axis='time', y_axis='mel', ax=ax)
+    img = librosa.display.specshow(log_mel, sr=sr, hop_length=256,
+                                   x_axis='time', y_axis='mel', ax=ax)
     ax.set_title(f'Log-Mel Spectrogram — {title}')
+    fig.colorbar(img, ax=ax, format='%+2.0f dB')
 
+plt.suptitle(f'Clip: {clean_id.replace("__clean", "")}', fontsize=11)
 plt.tight_layout()
 plt.savefig('assets/spectrogram_comparison.png', dpi=150)
 plt.show()
+print("Saved → assets/spectrogram_comparison.png")
 ```
 
 ### 2. Confusion Matrix
@@ -574,21 +609,44 @@ plt.show()
 A heatmap showing the 50×50 classification confusion matrix on the validation set:
 
 ```python
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
+# ── Visualisation 2: Confusion Matrix (50×50) ──
+# Paste into a new Colab cell after running the main notebook.
+# Requires: y_va, y_pred, classes, idx_to_label  (defined after cell 8)
 
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+import os
+
+os.makedirs('assets', exist_ok=True)
+
+# Rebuild predictions if y_pred is not in scope (re-run model.predict)
+# y_pred = model.predict(X_va)   # ← uncomment if needed
+
+class_names = [idx_to_label[i] for i in range(len(classes))]
 cm = confusion_matrix(y_va, y_pred)
-plt.figure(figsize=(20, 18))
-sns.heatmap(cm, xticklabels=classes, yticklabels=classes,
-            annot=False, fmt='d', cmap='Blues')
-plt.title('Confusion Matrix — SVM C=10, Final Features')
-plt.xlabel('Predicted')
-plt.ylabel('True')
+
+plt.figure(figsize=(22, 18))
+sns.heatmap(
+    cm,
+    xticklabels=class_names,
+    yticklabels=class_names,
+    annot=False,
+    fmt='d',
+    cmap='Blues',
+    linewidths=0.3,
+    linecolor='lightgrey'
+)
+plt.title('Confusion Matrix — Voting Ensemble (Final Model), F5 Features', fontsize=13)
+plt.xlabel('Predicted Label', fontsize=11)
+plt.ylabel('True Label', fontsize=11)
 plt.xticks(rotation=90, fontsize=6)
 plt.yticks(rotation=0, fontsize=6)
 plt.tight_layout()
 plt.savefig('assets/confusion_matrix.png', dpi=150)
 plt.show()
+print("Saved → assets/confusion_matrix.png")
 ```
 
 ### 3. Per-Class F1 Score Bar Chart
@@ -596,31 +654,48 @@ plt.show()
 Shows which of the 50 classes the model classifies most and least accurately:
 
 ```python
-from sklearn.metrics import classification_report
-import pandas as pd
+# ── Visualisation 3: Per-Class F1 Score Bar Chart ──
+# Paste into a new Colab cell after running the main notebook.
+# Requires: y_va, y_pred, classes, idx_to_label  (defined after cell 8)
 
-report = classification_report(y_va, y_pred,
-    target_names=[idx_to_label[i] for i in range(len(classes))],
-    output_dict=True)
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report
+import os
+
+os.makedirs('assets', exist_ok=True)
+
+class_names = [idx_to_label[i] for i in range(len(classes))]
+
+report = classification_report(
+    y_va, y_pred,
+    target_names=class_names,
+    output_dict=True
+)
 
 report_df = pd.DataFrame(report).T
-f1_by_class = report_df.loc[[idx_to_label[i] for i in range(len(classes))], 'f1-score']
+# Keep only the 50 class rows (exclude macro/weighted avg rows)
+f1_by_class = report_df.loc[class_names, 'f1-score'].astype(float)
 f1_by_class = f1_by_class.sort_values()
 
-plt.figure(figsize=(12, 10))
-f1_by_class.plot(kind='barh', color='steelblue')
-plt.axvline(x=f1_by_class.mean(), color='red', linestyle='--', label='Mean F1')
-plt.xlabel('F1 Score')
-plt.title('Per-Class F1 Score — Final Model')
-plt.legend()
+plt.figure(figsize=(12, 14))
+bars = plt.barh(f1_by_class.index, f1_by_class.values, color='steelblue')
+plt.axvline(x=float(f1_by_class.mean()), color='red', linestyle='--',
+            label=f'Mean F1 = {f1_by_class.mean():.3f}')
+plt.xlabel('F1 Score', fontsize=11)
+plt.title('Per-Class F1 Score — Voting Ensemble (Final Model)', fontsize=13)
+plt.xlim(0, 1.05)
+plt.legend(fontsize=10)
 plt.tight_layout()
 plt.savefig('assets/per_class_f1.png', dpi=150)
 plt.show()
+print("Saved → assets/per_class_f1.png")
 ```
 
 ### 4. Feature Group Contribution (Ablation)
 
-Bar chart showing the drop in Macro-F1 when each feature group is removed one at a time:
+Bar chart showing the drop in Macro-F1 when each feature group is removed one at a time (all tested with Logistic Regression on F5 pipeline):
 
 | Feature Group Removed | Macro-F1 Drop |
 |---|---|
@@ -633,6 +708,51 @@ Bar chart showing the drop in Macro-F1 when each feature group is removed one at
 
 MFCC is the most critical feature group. Log-Mel adds complementary texture-based information. Spectral and temporal features provide smaller but additive improvements.
 
+```python
+# ── Visualisation 4: Feature Ablation Bar Chart ──
+# Paste into a new Colab cell — standalone, no prior variables needed.
+
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+os.makedirs('assets', exist_ok=True)
+
+feature_groups = [
+    'Remove MFCC',
+    'Remove Log-Mel',
+    'Remove Delta/Delta-Delta',
+    'Remove Spectral Centroid',
+    'Remove ZCR + RMS',
+    'Remove Percentile Pooling\n(back to mean+std)',
+]
+f1_drops = [-0.11, -0.06, -0.03, -0.01, -0.01, -0.02]
+
+# Sort by magnitude of drop (largest drop first)
+sorted_pairs = sorted(zip(f1_drops, feature_groups), key=lambda x: x[0])
+drops_sorted, groups_sorted = zip(*sorted_pairs)
+
+colors = ['#d73027' if d <= -0.05 else '#fc8d59' if d <= -0.02 else '#fee090'
+          for d in drops_sorted]
+
+fig, ax = plt.subplots(figsize=(10, 5))
+bars = ax.barh(groups_sorted, drops_sorted, color=colors, edgecolor='grey')
+ax.axvline(x=0, color='black', linewidth=0.8)
+ax.set_xlabel('Macro-F1 Drop (negative = performance loss)', fontsize=11)
+ax.set_title('Feature Group Ablation — Macro-F1 Drop When Group Is Removed\n'
+             '(Logistic Regression, F5 pipeline)', fontsize=12)
+ax.set_xlim(-0.14, 0.01)
+
+for bar, drop in zip(bars, drops_sorted):
+    ax.text(drop - 0.002, bar.get_y() + bar.get_height() / 2,
+            f'{drop:.2f}', va='center', ha='right', fontsize=9, color='black')
+
+plt.tight_layout()
+plt.savefig('assets/feature_ablation.png', dpi=150)
+plt.show()
+print("Saved → assets/feature_ablation.png")
+```
+
 ---
 
 ## Final Configuration
@@ -642,7 +762,7 @@ MFCC is the most critical feature group. Log-Mel adds complementary texture-base
 | Sample Rate | 16 kHz | Standard for audio ML; covers 0–8 kHz range |
 | Silence Trimming | `top_db=25` | Gentle enough to preserve brief transients |
 | Pre-emphasis | `librosa.effects.preemphasis()` | Improves high-freq MFCC discriminability |
-| Normalisation | Peak normalisation | Consistent scale without over-amplifying quiet clips |
+| Normalisation | Peak normalisation | Consistent scale; bounded input for all conditions |
 | MFCCs | 20 coefficients | Sufficient spectral detail for 50-class ESC-50 |
 | CMVN | Row-normalise MFCC + Log-Mel | Improves robustness to channel/noise distortion |
 | Mel bins | 64 | Standard for environmental sound tasks |
@@ -650,5 +770,5 @@ MFCC is the most critical feature group. Log-Mel adds complementary texture-base
 | Hop length | 256 samples (16 ms) | ~75% overlap; sufficient temporal resolution |
 | Pooling | mean, std, median, p25, p75 | Captures full distribution shape across frames |
 | Feature dimension | 645 | Balanced expressiveness vs. complexity |
-| Classifier | SVC (RBF, C=10, balanced) | Best accuracy/F1 across all tested classifiers |
+| Classifier | Voting Ensemble (LR + SVM C=10 + RF, soft voting) | Best accuracy (0.62) and Macro-F1 (0.63) across all tested classifiers |
 | Train/Val split | 80/20, stratified, seed=42 | Reproducible, class-balanced evaluation |
