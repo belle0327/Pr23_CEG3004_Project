@@ -95,7 +95,9 @@ Pipeline:
   └─ StandardScaler()
   └─ SVC(C=10, kernel='rbf', gamma='scale', class_weight='balanced')
 ```
-
+- **StandardScaler** — normalises all features to zero mean and unit variance before the SVM
+- **SVC with RBF kernel** — captures non-linear decision boundaries in the high-dimensional feature space
+- **`class_weight='balanced'`** — automatically adjusts class weights inversely proportional to class frequency. This was a deliberate design choice to handle any class imbalance in the training set (a form of experimental discipline), preventing the model from biasing predictions toward more common classes.
 
 ---
 
