@@ -79,13 +79,13 @@ All features are extracted from 16 kHz mono audio using `n_fft=1024` and `hop_le
 ---
 
 ### 3. Feature Pooling
-For each feature:
-- Mean
-- Standard deviation
-- Median
-- 25th percentile
-- 75th percentile
+To transform variable-length temporal frames into a fixed-length **645-dimensional** vector, five statistics are computed across the time axis (`axis=1`) for every individual feature row:
 
+* **Mean & Standard Deviation**: Capture the average spectral shape and variability of the signal.
+* **Median**: Provides a central tendency robust to transient noise or outliers.
+* **25th & 75th Percentiles**: Describe the dynamic range and the spread of the feature distribution.
+
+This statistical aggregation ensures that the model receives a consistent input size regardless of the original audio clip duration.
 ---
 
 ### 4. Model
