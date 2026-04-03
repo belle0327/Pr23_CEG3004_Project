@@ -138,3 +138,30 @@ Evaluated on a stratified 80/20 train-validation split (`random_state=42`). This
 ---
 
 ## Reproducibility
+Everything runs on **Google Colab** — no local installation or manual dataset setup is required. The notebook handles dependency installation and dataset download automatically.
+ 
+### Step 1: Open the Notebook in Google Colab
+ 
+Click the button below, or go to [colab.research.google.com](https://colab.research.google.com), choose **File → Upload notebook**, and upload `notebooks/group23_ceg3004_project_colab.py` from this repository.
+ 
+### Step 2: Run All Cells in Order (Top to Bottom)
+ 
+The notebook is fully self-contained. Running it sequentially will:
+ 
+1. Install all required libraries (`librosa`, `scikit-learn`, `gdown`, etc.)
+2. **Automatically download and extract the dataset** from Google Drive — no manual upload needed
+3. Verify the dataset structure
+4. Extract features for all 2,000 training clips
+5. Train the SVM pipeline and print the validation report
+6. Save and auto-download `Pr_23_model.joblib` to your computer
+7. Generate predictions on the submission set and auto-download `Pr_23_predictions.csv`
+ 
+> **If the automatic dataset download fails** (e.g., due to Google Drive quota limits), you can manually download it from [this link](https://drive.google.com/file/d/1bceZrbOMPSXTTTMBx8XqDBwsSMussPHj/view?usp=sharing) and upload it to Colab using the file panel on the left sidebar.
+ 
+### Step 3: Collect Your Output Files
+ 
+Upon completion, two files are automatically downloaded to your computer:
+- `Pr_23_model.joblib`
+- `Pr_23_predictions.csv`
+ 
+> **Note:** Do **not** modify `clip_id` values in the predictions CSV. Only modify code in sections marked `🟨 STUDENT TODO`.
