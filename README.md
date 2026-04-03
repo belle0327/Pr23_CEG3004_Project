@@ -119,9 +119,14 @@ Tested:
 
 ## Results
 
-Validation:
-- Accuracy ≈ 0.60
-- Macro-F1 ≈ 0.57
+> These results are produced by running `notebooks/group23_ceg3004_project_colab.py` **as submitted** — the final version of the code with all TODO sections completed.
+ 
+| Metric | Score |
+| :--- | :--- |
+| **Validation Accuracy** | ~0.60 (0.592) |
+| **Macro-F1 Score** | ~0.57 (0.572) |
+ 
+Evaluated on a stratified 80/20 train-validation split (`random_state=42`). This reflects the best configuration identified through the experiments in [`experiment.md`](./experiment.md) — earlier configurations scored as low as ~0.44 accuracy with no preprocessing and the baseline Logistic Regression model.
 
 ---
 
