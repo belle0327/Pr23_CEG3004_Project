@@ -143,8 +143,7 @@ def preprocess_audio(y, sr):
         y = y[:target_len]
  
     y = librosa.effects.preemphasis(y)
- 
-    # 1e-8 guard prevents division by zero on silent clips
+
     peak = np.max(np.abs(y)) + 1e-8
     y = y / peak
  
@@ -174,56 +173,73 @@ y = y / rms
 
 ## Part 2 — Feature Extraction Experiments
 
-The `extract_features(path)` function converts raw audio into a fixed-length feature vector. We experimented with which features to include, how many coefficients to use, and how to pool across time frames.
+The `extract_features(path)` function converts raw audio into a fixed-length feature vector. We built this up step-by-step, starting from the baseline MFCC-only extraction and adding feature groups to capture spectral texture, shape, and temporal dynamics.
+
+> **All feature extraction experiments use the final preprocessing (P5)** and the **baseline model** (Logistic Regression) to isolate the effect of each feature change.
 
 ### Summary Table
 
-| Experiment | Features Used | Pooling | Vector Dim | Val Accuracy | Macro-F1 | Notes |
-|---|---|---|---|---|---|---|
-| F1 — Baseline MFCC only | MFCC(20), Δ, ΔΔ | mean + std | 120 | ~0.50 | ~0.46 | Baseline from original code |
-| F2 — MFCC + Log-Mel | MFCC(20), Δ, ΔΔ, Log-Mel(64) | mean + std | 440 | ~0.54 | ~0.51 | Log-Mel adds texture information |
-| F3 — Add Spectral + Temporal | Above + centroid, bandwidth, rolloff, ZCR, RMS | mean + std | 450 | ~0.57 | ~0.54 | Spectral shape helps differentiation |
-| F4 — Add CMVN | Same as F3, with row-normalised MFCC and Log-Mel | mean + std | 450 | ~0.58 | ~0.55 | CMVN improves noise robustness |
-| **F5 — Final: Add rich pooling** | **Same as F4** | **mean, std, median, p25, p75** | **645** | **~0.60** | **~0.57** | **Percentile pooling captures distribution shape** |
-| F6 — More MFCCs (40) | MFCC(40), Δ, ΔΔ + rest | mean, std, median, p25, p75 | 1245 | ~0.59 | ~0.56 | More MFCCs did not improve; higher dim |
-| F7 — Feature selection (SelectKBest) | Top 300 from F5 | — | 300 | ~0.58 | ~0.55 | No improvement; discarded |
-| F8 — With augmentation | F5 + noise/bandpass augmentation in training | — | 645 | ~0.57 | ~0.54 | Augmentation at training time hurt performance |
+| Experiment | What Changed from Previous | Features Used | Pooling | Vector Dim | Accuracy | Macro-F1 | Notes |
+|:---|:---|:---|:---|:---:|:---:|:---:|:---|
+| **F1 — Baseline** | — | MFCC(20), Δ, ΔΔ | mean + std | 120 | 0.45 | 0.45 | Original `features_mfcc_stats()` baseline |
+| **F2 — Add Log-Mel** | + Log-Mel(64) | F1 + Log-Mel(64) | mean + std | 248 | 0.52 | 0.52 | Captures texture information beyond cepstrum |
+| **F3 — Spectral+Temp** | + centroid, BW, rolloff, ZCR, RMS | F2 + 5 Spectral/Temporal | mean + std | 258 | 0.54 | 0.54 | Spectral shape improves class separation |
+| **F4 — Add CMVN** | Row-norm MFCC and Log-Mel | Same as F3 | mean + std | 258 | 0.58 | 0.57 | CMVN improves robustness to channel distortion |
+| **F5 — Rich Pooling ✅** | **Stats: 2 → 5** | **Same as F4** | **mean, std, med, p25, p75** | **645** | **0.60** | **0.59** | **Captures full distribution shape (Final)** |
+| **F6 — Try 40 MFCCs** | n_mfcc: 20 → 40 | Same as F5 (40 MFCCs) | 5-stat pooling | 1245 | 0.59 | 0.58 | Dimensionality overkill; redundant; discarded |
 
-**Key finding:** The jump from mean+std pooling to 5-statistic pooling (adding median and percentiles) improved performance by capturing the *distribution shape* of features over time, not just the average. CMVN (Cepstral Mean and Variance Normalisation via `librosa.util.normalize(..., axis=1)`) improved robustness to channel and noise distortions.
+**Key finding:** The jump from 2-stat (`mean+std`) to 5-statistic pooling (`mean, std, median, p25, p75`) provided the most significant boost in F5. By capturing the statistical distribution (spread and central tendency) rather than just the average, the model better distinguished non-stationary environmental sounds.
 
 ---
 
 ### Why 20 MFCCs instead of 13 or 40?
 
-- **13 MFCCs** is a classic choice for speech, but environmental sounds contain richer spectral texture requiring more coefficients.
-- **20 MFCCs** captures enough spectral detail for ESC-50 without over-fitting or adding redundant dimensions.
-- **40 MFCCs** (F6) did not improve performance and added ~600 more features, increasing training time and risk of overfitting.
+- **13 MFCCs** is standard for speech, but environmental sounds require more coefficients to capture complex spectral textures.
+- **20 MFCCs** captures sufficient detail for the 50 classes in ESC-50 without suffering from the curse of dimensionality.
+- **40 MFCCs (F6)** doubled the MFCC feature count but provided no accuracy gain, proving that the extra coefficients were redundant for this dataset size.
 
 ### Why use a Butterworth-style pre-emphasis instead of a bandpass filter?
 
-`librosa.effects.preemphasis()` applies a first-order high-pass filter (`H(z) = 1 - 0.97z⁻¹`). For the band-limited submission condition, where high frequencies are already suppressed, the MFCC's resistance to this suppression (due to CMVN) provides robustness — rather than attempting to recover frequencies that are truly missing.
+`librosa.effects.preemphasis()` applies a first-order high-pass filter ($H(z) = 1 - 0.97z^{-1}$). While the contest conditions are band-limited, pre-emphasis balances the spectral tilt, ensuring high-frequency "fingerprints" (like the click of a `can_opening`) are not lost. In contrast, a bandpass filter would discard frequencies that CMVN-normalized MFCCs are actually robust enough to utilize.
 
 ---
-
+ 
 ### Full Feature Extraction Code Variants
-
-#### F1 — Baseline: MFCC stats only
-
+ 
+#### F1 — Original Notebook Baseline
+ 
+This is the exact `extract_features` function as provided in the base code. It calls the separate `features_mfcc_stats()` helper, uses no CMVN, and pools only with mean and std:
+ 
 ```python
-def extract_features(path, sr=16000):
-    y, sr = load_audio(path, sr=sr)
-    y = preprocess_audio(y, sr)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20, n_fft=1024, hop_length=256)
+def features_mfcc_stats(y, sr, n_mfcc=20, n_fft=1024, hop=256):
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop)
     d1 = librosa.feature.delta(mfcc)
     d2 = librosa.feature.delta(mfcc, order=2)
+
     def stats(M):
         return np.concatenate([M.mean(axis=1), M.std(axis=1)], axis=0)
+
     return np.concatenate([stats(mfcc), stats(d1), stats(d2)], axis=0).astype(np.float32)
-    # Output: 3 * 20 * 2 = 120 dimensions
+
+def extract_features(path, sr=16000):
+    """Return a 1D feature vector for one clip.
+
+    🟨 STUDENT TODO: Improve feature extraction here.
+    Options:
+      - log-mel spectrogram stats
+      - spectral centroid/bandwidth/rolloff/flux
+      - CMVN on MFCC/log-mel
+      - multi-window features
+      - robust pooling (median, percentiles)
+    """
+    y, sr = load_audio(path, sr=sr)
+    y = preprocess_audio(y, sr)
+    feat = features_mfcc_stats(y, sr)
+    return feat
 ```
-
+ 
 #### F2 — Add Log-Mel Spectrogram
-
+ 
 ```python
 def extract_features(path, sr=16000):
     y, sr = load_audio(path, sr=sr)
@@ -239,9 +255,9 @@ def extract_features(path, sr=16000):
     return np.concatenate([stats(mfcc), stats(d1), stats(d2), stats(log_mel)]).astype(np.float32)
     # Output: (3*20 + 64) * 2 = 248 dimensions
 ```
-
+ 
 #### F3 — Add Spectral and Temporal Features
-
+ 
 ```python
 def extract_features(path, sr=16000):
     y, sr = load_audio(path, sr=sr)
@@ -264,43 +280,55 @@ def extract_features(path, sr=16000):
         stats(centroid), stats(bandwidth), stats(rolloff), stats(zcr), stats(rms)
     ]).astype(np.float32)
 ```
-
+ 
 #### F4 — Add CMVN (row-normalised MFCC and Log-Mel)
-
+ 
 ```python
 # Added after computing mfcc and log_mel:
 mfcc     = librosa.util.normalize(mfcc, axis=1)      # CMVN on MFCC
 log_mel  = librosa.util.normalize(log_mel, axis=1)   # CMVN on Log-Mel
 ```
-
+ 
 **Why CMVN helps:** Normalising each coefficient (row) to zero mean and unit variance across time reduces the effect of channel distortion — crucial for the noisy and band-limited conditions where the global spectral level is shifted.
-
+ 
 #### F5 — Final: Rich Percentile Pooling ✅
-
+ 
 ```python
 def extract_features(path, sr=16000):
+    """Return a 1D feature vector for one clip.
+
+    🟨 STUDENT TODO: Improve feature extraction here.
+    Options:
+      - log-mel spectrogram stats
+      - spectral centroid/bandwidth/rolloff/flux
+      - CMVN on MFCC/log-mel
+      - multi-window features
+      - robust pooling (median, percentiles)
+    """
     y, sr = load_audio(path, sr=sr)
     y = preprocess_audio(y, sr)
 
-    n_fft, hop = 1024, 256
+    n_fft = 1024
+    hop = 256
 
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20, n_fft=n_fft, hop_length=hop)
-    mfcc = librosa.util.normalize(mfcc, axis=1)   # CMVN
-    d1   = librosa.feature.delta(mfcc)
-    d2   = librosa.feature.delta(mfcc, order=2)
+    mfcc = librosa.util.normalize(mfcc, axis=1)
+    d1 = librosa.feature.delta(mfcc)
+    d2 = librosa.feature.delta(mfcc, order=2)
 
-    mel     = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft, hop_length=hop, n_mels=64)
+    mel = librosa.feature.melspectrogram(
+        y=y, sr=sr, n_fft=n_fft, hop_length=hop, n_mels=64
+    )
     log_mel = librosa.power_to_db(mel + 1e-10)
-    log_mel = librosa.util.normalize(log_mel, axis=1)  # CMVN
+    log_mel = librosa.util.normalize(log_mel, axis=1)
 
-    centroid  = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
     bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
-    rolloff   = librosa.feature.spectral_rolloff(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
-    zcr       = librosa.feature.zero_crossing_rate(y, hop_length=hop)
-    rms       = librosa.feature.rms(y=y, frame_length=n_fft, hop_length=hop)
+    rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
+    zcr = librosa.feature.zero_crossing_rate(y, hop_length=hop)
+    rms = librosa.feature.rms(y=y, frame_length=n_fft, hop_length=hop)
 
     def stats(M):
-        # 5-statistic pooling captures distribution shape, not just average
         return np.concatenate([
             np.mean(M, axis=1),
             np.std(M, axis=1),
@@ -310,22 +338,22 @@ def extract_features(path, sr=16000):
         ], axis=0)
 
     feat = np.concatenate([
-        stats(mfcc),      # 20 * 5 = 100
-        stats(d1),        # 20 * 5 = 100
-        stats(d2),        # 20 * 5 = 100
-        stats(log_mel),   # 64 * 5 = 320
-        stats(centroid),  # 1 * 5  = 5
-        stats(bandwidth), # 1 * 5  = 5
-        stats(rolloff),   # 1 * 5  = 5
-        stats(zcr),       # 1 * 5  = 5
-        stats(rms),       # 1 * 5  = 5
+        stats(mfcc),
+        stats(d1),
+        stats(d2),
+        stats(log_mel),
+        stats(centroid),
+        stats(bandwidth),
+        stats(rolloff),
+        stats(zcr),
+        stats(rms)
     ], axis=0).astype(np.float32)
 
-    return feat  # Total: 645 dimensions
+    return feat
 ```
-
+ 
 #### F6 — 40 MFCCs (tested, not selected)
-
+ 
 ```python
 # Replace n_mfcc=20 with n_mfcc=40
 mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40, n_fft=n_fft, hop_length=hop)
@@ -333,49 +361,6 @@ mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40, n_fft=n_fft, hop_length=hop)
 # Performance did not improve over 20 MFCCs — higher dimensionality
 # increases training time without benefit for this dataset size.
 ```
-
-#### F7 — Feature Selection with SelectKBest (tested, not selected)
-
-```python
-from sklearn.feature_selection import SelectKBest, f_classif
-from sklearn.pipeline import Pipeline
-
-model = Pipeline([
-    ('scaler', StandardScaler()),
-    ('selector', SelectKBest(f_classif, k=300)),
-    ('clf', SVC(C=10, kernel='rbf', gamma='scale', class_weight='balanced'))
-])
-# Accuracy dropped slightly — the SVM with RBF kernel already handles
-# high-dimensional input well; discarding features removed useful signal.
-```
-
-#### F8 — Training-time Augmentation (tested, not selected)
-
-```python
-# Augmentation applied ONLY during training (not at inference)
-import random
-
-def augment_audio(y, sr):
-    """Randomly apply one augmentation."""
-    choice = random.random()
-    if choice < 0.33:
-        # Add white noise
-        noise_level = random.uniform(0.003, 0.01)
-        y = y + noise_level * np.random.randn(len(y))
-    elif choice < 0.66:
-        # Band-pass filter (simulate bandlimited condition)
-        from scipy.signal import butter, sosfilt
-        low, high = 300, 3000
-        sos = butter(4, [low / (sr / 2), high / (sr / 2)], btype='band', output='sos')
-        y = sosfilt(sos, y)
-    # else: no augmentation (leave clean)
-    return y.astype(np.float32)
-
-# Applied inside the training loop before extract_features()
-# Result: Accuracy dropped ~0.03 — augmentation introduced too much
-# variance with only 40 clips per class (small dataset). Removed from final.
-```
-
 ---
 
 ## Part 3 — Model Training Experiments
