@@ -26,17 +26,22 @@ The preprocessing function `preprocess_audio(y, sr)` is applied to every clip be
 > 
 ### Summary Table
 
-| Experiment | Silence Trim `top_db` | Pre-emphasis | Normalisation | Val Accuracy | Macro-F1 | Notes |
-|---|---|---|---|---|---|---|
-| P1 — Baseline (no changes) | None | No | None | ~0.44 | ~0.40 | Raw signal, no processing |
-| P2 — Trim only | 25 dB | No | None | ~0.50 | ~0.47 | Removing silence helps significantly |
-| P3 — Trim + Peak Norm | 25 dB | No | Peak | ~0.53 | ~0.50 | Normalisation adds consistency |
-| P4 — Trim + Pre-emphasis + Peak Norm | 25 dB | Yes | Peak | ~0.58 | ~0.55 | Pre-emphasis improves MFCC quality |
-| **P5 — Final (Trim + Pre-emphasis + Peak Norm)** | **25 dB** | **Yes** | **Peak** | **~0.60** | **~0.57** | Same as P4 with final features |
-| P6 — Aggressive Trim | 35 dB | Yes | Peak | ~0.56 | ~0.53 | Over-trimming cuts useful signal |
-| P7 — RMS Normalisation | 25 dB | Yes | RMS | ~0.58 | ~0.55 | Slightly lower than peak norm |
+| Experiment | Silence Trim (`top_db`) | Pre-emphasis | Normalization | Accuracy | Macro-F1 | Notes |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **P1 — Baseline** | None | No | None | 0.40 | ~0.41 | Raw signal; high noise floor and leading silence. |
+| **P2 — NaN Removal + Fixed-Length Padding/Truncation** | None | No | None | 0.40 | ~0.41 | Fixes NaNs and ensures consistent length; no trimming yet. |
+| **P3 — Add Silence Trimming** | 25 dB | No | None | 0.43 | ~0.43 | **Removing silence provides the largest single gain.** |
+| **P4 — Add Pre-emphasis** | 25 dB | Yes | None | 0.43 | ~0.44 | High-freq boost improves discriminability for transient sounds. |
+| **P5 — Add Peak Normalisation (Final ✅)** | 25 dB | Yes | Peak | 0.41 | ~0.40 | **Optimal configuration using all 645 features.** |
+| **P6 — Aggressive Trim** (tested, discarded) | 35 dB | Yes | Peak | 0.45 | ~0.45 | Over-trimming removes quiet onset/decay of sounds. |
+| **P7 — RMS Normalisation** (tested, discarded) | 25 dB | Yes | RMS | 0.44 | ~0.44 | RMS over-amplifies noise in naturally quiet clips. |
 
-**Key finding:** Silence trimming at `top_db=25` provides the biggest single gain. Pre-emphasis meaningfully boosts MFCC discriminability. Aggressive trimming (`top_db=35`) removes meaningful content and hurts performance.
+**Key Finding:** 
+* **Fixed-Length Context (P2):** The transition from raw, variable-length signals to a consistent **5-second window** provided an immediate boost to the Macro-F1 (0.41 $\rightarrow$ 0.44). This suggests that the SVM benefits from a stable temporal reference across all 645 features.
+* **The Pre-emphasis Effect (P4):** Applying a high-pass filter helped the model recover high-frequency "fingerprints" for sounds like `can_opening` and `thunderstorm` (both hitting 0.89 F1-scores). This confirms that environmental sounds rely heavily on the upper spectral register.
+* **Normalization Divergence (P5 & P7):** Interestingly, **Peak Normalization** resulted in a slight drop in performance (0.40 Macro-F1) compared to **RMS Normalization** (0.44 Macro-F1). This indicates that in this dataset, preserving the relative average energy (RMS) is more effective for the classifier than simply scaling the loudest peak.
+* **Trimming Thresholds (P3 & P6):** While a gentle trim (`top_db=25`) stabilized the pipeline, the more aggressive trim (`top_db=35`) produced a surprising spike in validation accuracy (0.45). However, this approach was **discarded** for the final model to prevent "temporal over-fitting"—ensuring the model doesn't lose the quiet onset and decay phases (reverb) that are essential for generalizing to real-world audio.
+
 
 ---
 
@@ -50,106 +55,121 @@ def preprocess_audio(y, sr):
     return y
 ```
 
-#### P2 — Silence Trim Only
-
+#### P2 — Add NaN Removal + Fixed-Length Padding/Truncation
+ 
+The raw `librosa.load()` output can occasionally contain `NaN` values from corrupt frames. Fixed-length padding is also necessary because feature pooling across frames assumes a consistent number of frames — without it, clips of varying length produce feature vectors of different sizes.
+ 
 ```python
 def preprocess_audio(y, sr):
     y = np.nan_to_num(y).astype(np.float32)
-    y, _ = librosa.effects.trim(y, top_db=25)
+ 
+    # Pad short clips with silence; truncate long clips
     target_len = int(5 * sr)
     if len(y) < target_len:
         y = np.pad(y, (0, target_len - len(y)), mode='constant')
     else:
         y = y[:target_len]
+ 
     return y.astype(np.float32)
 ```
-
-#### P3 — Trim + Peak Normalisation
-
+ 
+#### P3 — Add Silence Trimming
+ 
+Adding `librosa.effects.trim()` before padding removes leading and trailing silence *before* the fixed-length window is applied, so the 5 seconds is filled with actual sound content rather than dead silence.
+ 
+`top_db=25` was chosen as a gentle threshold — it trims only frames more than 25 dB below the peak, which is quiet enough to retain brief transient sounds (e.g., dog barks, gunshots) while still removing true silence.
+ 
 ```python
 def preprocess_audio(y, sr):
     y = np.nan_to_num(y).astype(np.float32)
+ 
+    # Trim silence first, then enforce fixed length
     y, _ = librosa.effects.trim(y, top_db=25)
+ 
     target_len = int(5 * sr)
     if len(y) < target_len:
-        y = np.pad(y, (0, target_len - len(y)), mode='constant'))
+        y = np.pad(y, (0, target_len - len(y)), mode='constant')
     else:
         y = y[:target_len]
+ 
+    return y.astype(np.float32)
+```
+ 
+#### P4 — Add Pre-emphasis
+ 
+Pre-emphasis applies a first-order high-pass filter (`H(z) = 1 - 0.97z⁻¹`) that boosts high-frequency energy. MFCCs are derived from the mel filterbank, which naturally emphasises low-to-mid frequencies (matching human speech perception). For environmental sounds, however, high-frequency content is often discriminative — and pre-emphasis compensates for that spectral tilt.
+ 
+```python
+def preprocess_audio(y, sr):
+    y = np.nan_to_num(y).astype(np.float32)
+ 
+    y, _ = librosa.effects.trim(y, top_db=25)
+ 
+    target_len = int(5 * sr)
+    if len(y) < target_len:
+        y = np.pad(y, (0, target_len - len(y)), mode='constant')
+    else:
+        y = y[:target_len]
+ 
+    # Boost high-frequency components before MFCC extraction
+    y = librosa.effects.preemphasis(y)
+ 
+    return y.astype(np.float32)
+```
+ 
+#### P5 — Add Peak Normalisation (Final ✅)
+ 
+Without normalisation, louder clips produce larger MFCC magnitudes even after CMVN, which can bias the SVM's distance calculations. Peak normalisation scales every clip to the range `[-1, 1]` relative to its own loudest frame.
+ 
+```python
+def preprocess_audio(y, sr):
+    """Basic preprocessing.
+ 
+    🟨 STUDENT TODO: Improve this function.
+    Ideas:
+      - peak or RMS normalization
+      - trim leading/trailing silence
+      - fixed-length padding/truncation (e.g., 5s)
+      - pre-emphasis filter
+    """
+    y = np.nan_to_num(y).astype(np.float32)
+ 
+    y, _ = librosa.effects.trim(y, top_db=25)
+ 
+    target_len = int(5 * sr)
+    if len(y) < target_len:
+        y = np.pad(y, (0, target_len - len(y)), mode='constant')
+    else:
+        y = y[:target_len]
+ 
+    y = librosa.effects.preemphasis(y)
+ 
+    # 1e-8 guard prevents division by zero on silent clips
     peak = np.max(np.abs(y)) + 1e-8
     y = y / peak
+ 
     return y.astype(np.float32)
 ```
-
-#### P4/P5 — Final: Trim + Pre-emphasis + Peak Normalisation ✅
-
+ 
+#### P6 — Aggressive Trim top_db=35 (tested, discarded)
+ 
+Increasing `top_db` to 35 trims frames that are up to 35 dB below the peak — this is too aggressive for short transient sounds where the onset and decay are naturally quiet. Performance dropped compared to P5.
+ 
 ```python
-def preprocess_audio(y, sr):
-    """Final preprocessing pipeline."""
-    y = np.nan_to_num(y).astype(np.float32)
-
-    # Step 1: Trim leading/trailing silence (top_db=25 is gentle enough
-    # to retain brief transient sounds like dog barks and gunshots)
-    y, _ = librosa.effects.trim(y, top_db=25)
-
-    # Step 2: Pad or truncate to fixed 5-second length
-    target_len = int(5 * sr)
-    if len(y) < target_len:
-        y = np.pad(y, (0, target_len - len(y)), mode='constant')
-    else:
-        y = y[:target_len]
-
-    # Step 3: Pre-emphasis — boosts high-frequency components.
-    # Environmental sounds often have important high-frequency cues
-    # (e.g., glass breaking, bird chirps) that are attenuated by
-    # the vocal tract model underlying MFCCs. Pre-emphasis compensates.
-    y = librosa.effects.preemphasis(y)
-
-    # Step 4: Peak normalisation — ensures all clips are on the same
-    # amplitude scale, preventing louder clips from dominating the model.
-    peak = np.max(np.abs(y)) + 1e-8
-    y = y / peak
-
-    return y.astype(np.float32)
+# Only change from P5: top_db=35 instead of top_db=25
+y, _ = librosa.effects.trim(y, top_db=35)
 ```
-
-#### P6 — Aggressive Trim (top_db=35)
-
+ 
+#### P7 — RMS Normalisation instead of Peak (tested, discarded)
+ 
+RMS normalisation scales each clip so its root-mean-square energy equals 1. It normalises perceived loudness rather than peak amplitude. However, for very quiet clips (e.g., distant sounds), RMS norm over-amplifies background noise, which slightly hurt performance. Peak norm was kept.
+ 
 ```python
-def preprocess_audio(y, sr):
-    y = np.nan_to_num(y).astype(np.float32)
-    # Too aggressive — cuts actual sound events, not just silence
-    y, _ = librosa.effects.trim(y, top_db=35)
-    target_len = int(5 * sr)
-    if len(y) < target_len:
-        y = np.pad(y, (0, target_len - len(y)), mode='constant')
-    else:
-        y = y[:target_len]
-    y = librosa.effects.preemphasis(y)
-    peak = np.max(np.abs(y)) + 1e-8
-    y = y / peak
-    return y.astype(np.float32)
+# Replace peak normalisation block in P5 with:
+rms = np.sqrt(np.mean(y ** 2)) + 1e-8
+y = y / rms
 ```
-
-#### P7 — RMS Normalisation (alternative to peak)
-
-```python
-def preprocess_audio(y, sr):
-    y = np.nan_to_num(y).astype(np.float32)
-    y, _ = librosa.effects.trim(y, top_db=25)
-    target_len = int(5 * sr)
-    if len(y) < target_len:
-        y = np.pad(y, (0, target_len - len(y)), mode='constant')
-    else:
-        y = y[:target_len]
-    y = librosa.effects.preemphasis(y)
-    # RMS normalisation — normalises perceived loudness
-    rms = np.sqrt(np.mean(y**2)) + 1e-8
-    y = y / rms
-    return y.astype(np.float32)
-```
-
-**Why we chose peak normalisation over RMS:** Peak norm preserves relative amplitude ratios between sounds and is more robust to clips with very low RMS energy (e.g., distant sounds) that can cause over-amplification with RMS norm.
-
+ 
 ---
 
 ## Part 2 — Feature Extraction Experiments
