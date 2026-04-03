@@ -1,4 +1,4 @@
-# Pr23_CEG3004_Project3
+# Pr23_CEG3004_Project
 
 # CEG3004 DSP Mini-Project: Environmental Sound Classification
 
