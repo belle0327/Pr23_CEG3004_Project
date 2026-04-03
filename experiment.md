@@ -117,7 +117,7 @@ def preprocess_audio(y, sr):
     return y.astype(np.float32)
 ```
  
-#### P5 — Add Peak Normalisation (Final ✅)
+#### P5 — Add Peak Normalisation (Final )
  
 Without normalisation, louder clips produce larger MFCC magnitudes even after CMVN, which can bias the SVM's distance calculations. Peak normalisation scales every clip to the range `[-1, 1]` relative to its own loudest frame.
  
@@ -185,8 +185,9 @@ The `extract_features(path)` function converts raw audio into a fixed-length fea
 | **F2 — Add Log-Mel** | + Log-Mel(64) | F1 + Log-Mel(64) | mean + std | 248 | 0.52 | 0.52 | Captures texture information beyond cepstrum |
 | **F3 — Spectral+Temp** | + centroid, BW, rolloff, ZCR, RMS | F2 + 5 Spectral/Temporal | mean + std | 258 | 0.54 | 0.54 | Spectral shape improves class separation |
 | **F4 — Add CMVN** | Row-norm MFCC and Log-Mel | Same as F3 | mean + std | 258 | 0.58 | 0.57 | CMVN improves robustness to channel distortion |
-| **F5 — Rich Pooling ✅** | **Stats: 2 → 5** | **Same as F4** | **mean, std, med, p25, p75** | **645** | **0.60** | **0.59** | **Captures full distribution shape (Final)** |
-| **F6 — Try 40 MFCCs** | n_mfcc: 20 → 40 | Same as F5 (40 MFCCs) | 5-stat pooling | 1245 | 0.59 | 0.58 | Dimensionality overkill; redundant; discarded |
+| **F5 — Rich Pooling ** | **Stats: 2 → 5** | **Same as F4** | **mean, std, med, p25, p75** | **645** | **0.60** | **0.59** | **Captures full distribution shape (Final)** |
+| **F6 — Try 40 MFCCs** | n_mfcc: 20 → 40 | Same as F5 (40 MFCCs) | 5-stat pooling | 1245 | 0.59 | ~0.58 | Dimensionality overkill; redundant; discarded |
+| **F7 — Try 13 MFCCs** | n_mfcc: 20 → 13 | Same as F5 (13 MFCCs) | 5-stat pooling | 540 | 0.56 | ~0.54 | discarded |
 
 **Key finding:** The jump from 2-stat (`mean+std`) to 5-statistic pooling (`mean, std, median, p25, p75`) provided the most significant boost in F5. By capturing the statistical distribution (spread and central tendency) rather than just the average, the model better distinguished non-stationary environmental sounds.
 
@@ -291,7 +292,7 @@ log_mel  = librosa.util.normalize(log_mel, axis=1)   # CMVN on Log-Mel
  
 **Why CMVN helps:** Normalising each coefficient (row) to zero mean and unit variance across time reduces the effect of channel distortion — crucial for the noisy and band-limited conditions where the global spectral level is shifted.
  
-#### F5 — Final: Rich Percentile Pooling ✅
+#### F5 — Final: Rich Percentile Pooling 
  
 ```python
 def extract_features(path, sr=16000):
@@ -361,20 +362,33 @@ mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40, n_fft=n_fft, hop_length=hop)
 # Performance did not improve over 20 MFCCs — higher dimensionality
 # increases training time without benefit for this dataset size.
 ```
+#### F7 — 13 MFCCs (tested, not selected)
+
+```python
+# Replace n_mfcc=20 with n_mfcc=13
+mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=n_fft, hop_length=hop)
+
+# Result: (13 MFCC + 13 Delta + 13 Delta-Delta) * 5 stats = 195 dims from MFCC alone.
+# Total Vector Dim: (39 [MFCCs] + 64 [Mel] + 5 [Spectral]) * 5 stats = 540 dimensions.
+
+# Performance dropped slightly compared to 20 MFCCs (645 dims). 
+# While 13 MFCCs is standard for speech, it proved insufficient for 
+# capturing the complex spectral textures of environmental sounds.
+```
 ---
 
 ## Part 3 — Model Training Experiments
 
 ### Summary Table
 
-| Experiment | Classifier | Hyperparameters | Val Accuracy | Macro-F1 | Notes |
+| Experiment | Classifier | Hyperparameters | Accuracy | Macro-F1 | Notes |
 |---|---|---|---|---|---|
-| M1 — Logistic Regression (baseline) | `LogisticRegression` | `max_iter=1000` | ~0.50 | ~0.46 | Original baseline provided |
-| M2 — Random Forest | `RandomForestClassifier` | `n_estimators=200` | ~0.54 | ~0.51 | Better than LR, worse than SVM |
-| M3 — SVM C=1 | `SVC` | `C=1, rbf, scale` | ~0.57 | ~0.54 | Under-regularised for this feature space |
-| M4 — SVM C=10 (balanced) | `SVC` | `C=10, rbf, scale, balanced` | ~0.60 | ~0.57 | Best performance |
-| M5 — SVM C=20 | `SVC` | `C=20, rbf, scale, balanced` | ~0.60 | ~0.57 | Same as C=10; not chosen (less generalisation) |
-| M6 — SVM C=30 | `SVC` | `C=30, rbf, scale, balanced` | ~0.59 | ~0.56 | Slight overfit |
+| M1 — Logistic Regression (baseline) | `LogisticRegression` | `max_iter=2000` | 0.60 | ~0.59 | Original baseline provided |
+| M2 — Random Forest | `RandomForestClassifier` | `n_estimators=200` | 0.6 | ~0.58 | Better than LR, worse than SVM |
+| M3 — SVM C=1 | `SVC` | `C=1, rbf, scale` | 0.5 | ~0.46 | Under-regularised for this feature space |
+| M4 — SVM C=10 (balanced) | `SVC` | `C=10, rbf, scale, balanced` | 0.59 | ~0.57 | Best performance |
+| M5 — SVM C=20 | `SVC` | `C=20, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen (less generalisation) |
+| M6 — SVM C=30 | `SVC` | `C=30, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen |
 | M7 — Gradient Boosting | `GradientBoostingClassifier` | `n_estimators=200` | ~0.53 | ~0.49 | Slow to train; underperforms SVM |
 
 **Final decision: SVM with `C=10`** — same performance as C=20, but C=10 is a simpler, more conservative model that is less likely to overfit on the small 40-clips-per-class training set.
@@ -390,7 +404,7 @@ from sklearn.linear_model import LogisticRegression
 
 model = Pipeline([
     ('scaler', StandardScaler()),
-    ('clf', LogisticRegression(max_iter=1000))
+    ('clf', LogisticRegression(max_iter=2000, class_weight='balanced'))
 ])
 ```
 
@@ -420,7 +434,7 @@ model = Pipeline([
 # underfitting the 50-class problem.
 ```
 
-#### M4 — SVM C=10 (Final) ✅
+#### M4 — SVM C=10 (Final) 
 
 ```python
 from sklearn.svm import SVC
