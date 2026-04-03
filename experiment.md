@@ -32,7 +32,7 @@ The preprocessing function `preprocess_audio(y, sr)` is applied to every clip be
 | **P2 — NaN Removal + Fixed-Length Padding/Truncation** | None | No | None | 0.40 | ~0.41 | Fixes NaNs and ensures consistent length; no trimming yet. |
 | **P3 — Add Silence Trimming** | 25 dB | No | None | 0.43 | ~0.43 | **Removing silence provides the largest single gain.** |
 | **P4 — Add Pre-emphasis** | 25 dB | Yes | None | 0.43 | ~0.44 | High-freq boost improves discriminability for transient sounds. |
-| **P5 — Add Peak Normalisation (Final ✅)** | 25 dB | Yes | Peak | 0.41 | ~0.40 | **Optimal configuration using all 645 features.** |
+| **P5 — Add Peak Normalisation (Final)** | 25 dB | Yes | Peak | 0.41 | ~0.40 | **Optimal configuration using all 645 features.** |
 | **P6 — Aggressive Trim** (tested, discarded) | 35 dB | Yes | Peak | 0.45 | ~0.45 | Over-trimming removes quiet onset/decay of sounds. |
 | **P7 — RMS Normalisation** (tested, discarded) | 25 dB | Yes | RMS | 0.44 | ~0.44 | RMS over-amplifies noise in naturally quiet clips. |
 
@@ -390,7 +390,7 @@ mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=n_fft, hop_length=hop)
 | M5 — SVM C=20 | `SVC` | `C=20, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen (less generalisation) |
 | M6 — SVM C=30 | `SVC` | `C=30, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen |
 | M7 — Gradient Boosting | `GradientBoostingClassifier` | `n_estimators=200` | >15min, no result | >15min, no result | Slow to train, no result |
-| M8 — Voting Ensemble (LR + SVM + RF) | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | 0.62 | ~0.63 | Ensemble combines three diverse models; soft voting uses predicted probabilities. Typically outperforms any single classifier. |
+| M8 — Voting Ensemble (LR + SVM + RF)(Final) | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | 0.62 | ~0.63 | Ensemble combines three diverse models; soft voting uses predicted probabilities. Typically outperforms any single classifier. |
 
 **Final decision: SVM with `C=10`** — same performance as C=20, but C=10 is a simpler, more conservative model that is less likely to overfit on the small 40-clips-per-class training set.
 
