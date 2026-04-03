@@ -389,7 +389,8 @@ mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=n_fft, hop_length=hop)
 | M4 — SVM C=10 (balanced) | `SVC` | `C=10, rbf, scale, balanced` | 0.59 | ~0.57 | Best performance |
 | M5 — SVM C=20 | `SVC` | `C=20, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen (less generalisation) |
 | M6 — SVM C=30 | `SVC` | `C=30, rbf, scale, balanced` | 0.59 | ~0.57 | Same as C=10; not chosen |
-| M7 — Gradient Boosting | `GradientBoostingClassifier` | `n_estimators=200` | ~0.53 | ~0.49 | Slow to train; underperforms SVM |
+| M7 — Gradient Boosting | `GradientBoostingClassifier` | `n_estimators=200` | >15min, no result | >15min, no result | Slow to train, no result |
+| M8 — Voting Ensemble (LR + SVM + RF) | VotingClassifier (soft voting) | `estimators=[('lr', LogisticRegression), ('svm', SVC(C=10, rbf)), ('rf', RandomForestClassifier)]`, `voting='soft'` | 0.62 | ~0.63 | Ensemble combines three diverse models; soft voting uses predicted probabilities. Typically outperforms any single classifier. |
 
 **Final decision: SVM with `C=10`** — same performance as C=20, but C=10 is a simpler, more conservative model that is less likely to overfit on the small 40-clips-per-class training set.
 
@@ -482,9 +483,29 @@ model = Pipeline([
     ('clf', GradientBoostingClassifier(n_estimators=200, random_state=42))
 ])
 # Very slow to train on 645-dim features * 2000 samples * 50 classes.
-# Underperformed SVM in both accuracy and F1.
 ```
+#### M8 — Voting Ensemble (LR + SVM + RF)
 
+```python
+from sklearn.ensemble import VotingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+
+base_lr = LogisticRegression(max_iter=2000, class_weight='balanced')
+base_svm = SVC(C=10, kernel='rbf', gamma='scale', class_weight='balanced', probability=True)
+base_rf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+
+voting_clf = VotingClassifier(
+    estimators=[('lr', base_lr), ('svm', base_svm), ('rf', base_rf)],
+    voting='soft'
+)
+
+model = Pipeline([
+    ('scaler', StandardScaler()),
+    ('clf', voting_clf)
+])
+```
 ---
 
 ## Error Analysis
