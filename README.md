@@ -21,7 +21,21 @@ Based on the project briefing, the objectives are:
 - Improve robustness under distortions
 
 ---
-
+## Environment
+ 
+This project runs entirely on **Google Colab** — no local setup needed. All dependencies are installed automatically by the first cell of the notebook.
+ 
+| Library | Purpose |
+|---|---|
+| `librosa` | Audio loading, feature extraction (MFCC, mel spectrogram, spectral features) |
+| `scikit-learn` | ML pipeline, SVM classifier, StandardScaler, metrics |
+| `numpy` | Numerical operations and feature pooling |
+| `pandas` | Loading and managing CSV metadata |
+| `soundfile` | WAV file I/O |
+| `joblib` | Saving and loading the trained model |
+| `tqdm` | Progress bars during feature extraction |
+ 
+---
 ## Dataset
 - 2000 audio clips
 - 50 classes
@@ -38,11 +52,13 @@ Submission dataset includes:
 ## Pipeline Design
 
 ### 1. Preprocessing
-- Remove NaN values
-- Trim silence
-- Pad/truncate to 5 seconds
-- Apply pre-emphasis
-- Peak normalization
+Applied to every audio clip before feature extraction:
+ 
+1. **NaN removal** — `np.nan_to_num()` ensures no invalid values
+2. **Silence trimming** — `librosa.effects.trim(top_db=25)` removes leading/trailing silence
+3. **Fixed-length padding/truncation** — all clips standardised to exactly **5 seconds** at 16 kHz
+4. **Pre-emphasis filter** — `librosa.effects.preemphasis()` boosts high-frequency content to counteract spectral tilt, improving MFCC quality
+5. **Peak normalisation** — divides by peak amplitude so all clips are on the same scale
 
 ### 2. Feature Extraction
 Features used:
